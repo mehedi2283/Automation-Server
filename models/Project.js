@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const ProjectSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
+  order: { type: Number, default: 0 },
   title: { type: String, required: true },
   client: String,
   industry: String,

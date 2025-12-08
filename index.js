@@ -11,8 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 // Database Connection
-// Note: In production, use process.env.MONGODB_URI
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://niyaoctopidigital_db_user:7K3SSLZm3MwhRwYl@odl.nlmug8f.mongodb.net/Automation_Portfolio?retryWrites=true&w=majority&appName=ODL";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://niyaoctopidigital_db_user:7K3SSLZm3MwhRwYl@odl.nlmug8f.mongodb.net/?appName=ODL";
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB Connected Successfully'))
@@ -22,13 +21,16 @@ mongoose.connect(MONGODB_URI)
 const Project = require('./models/Project');
 const TeamMember = require('./models/TeamMember');
 const Workflow = require('./models/Workflow');
+const ClientImage = require('./models/ClientImage');
+const TechTool = require('./models/TechTool');
+const AboutInfo = require('./models/AboutInfo');
 
 // --- REST API Routes ---
 
 // 1. Projects Routes
 app.get('/api/projects', async (req, res) => {
   try {
-    const projects = await Project.find().sort({ createdAt: -1 });
+    const projects = await Project.find().sort({ order: 1, createdAt: -1 });
     res.json(projects);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -45,9 +47,27 @@ app.post('/api/projects', async (req, res) => {
   }
 });
 
+app.put('/api/projects/reorder', async (req, res) => {
+  try {
+    const { updates } = req.body; // Expects array of { id, order }
+    if (!updates || !Array.isArray(updates)) return res.status(400).json({ message: "Invalid updates" });
+
+    const bulkOps = updates.map(update => ({
+      updateOne: {
+        filter: { id: update.id },
+        update: { $set: { order: update.order } }
+      }
+    }));
+
+    await Project.bulkWrite(bulkOps);
+    res.json({ message: "Projects reordered" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 app.put('/api/projects/:id', async (req, res) => {
   try {
-    // We use the custom 'id' field, not the Mongo '_id'
     const project = await Project.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
     if (!project) return res.status(404).json({ message: 'Project not found' });
     res.json(project);
@@ -146,8 +166,103 @@ app.delete('/api/workflows/:id', async (req, res) => {
   }
 });
 
+// 4. Client Images Routes
+app.get('/api/clients', async (req, res) => {
+  try {
+    const clients = await ClientImage.find().sort({ createdAt: -1 });
+    res.json(clients);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/clients', async (req, res) => {
+  const client = new ClientImage(req.body);
+  try {
+    const newClient = await client.save();
+    res.status(201).json(newClient);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+app.delete('/api/clients/:id', async (req, res) => {
+  try {
+    await ClientImage.findOneAndDelete({ id: req.params.id });
+    res.json({ message: 'Client deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 5. Tech Stack Routes
+app.get('/api/tech-stack', async (req, res) => {
+  try {
+    const tools = await TechTool.find().sort({ category: 1, name: 1 });
+    res.json(tools);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/tech-stack', async (req, res) => {
+  const tool = new TechTool(req.body);
+  try {
+    const newTool = await tool.save();
+    res.status(201).json(newTool);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+app.put('/api/tech-stack/:id', async (req, res) => {
+  try {
+    const tool = await TechTool.findOneAndUpdate({ id: req.params.id }, req.body, { new: true });
+    res.json(tool);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/tech-stack/:id', async (req, res) => {
+  try {
+    await TechTool.findOneAndDelete({ id: req.params.id });
+    res.json({ message: 'Tool deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 6. About Us Routes (Singleton)
+app.get('/api/about', async (req, res) => {
+  try {
+    const info = await AboutInfo.findOne();
+    res.json(info || null);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post('/api/about', async (req, res) => {
+  try {
+    // Upsert (update if exists, else insert)
+    const { id, ...updateData } = req.body;
+    const info = await AboutInfo.findOneAndUpdate(
+      { id: id }, 
+      req.body, 
+      { new: true, upsert: true }
+    );
+    res.json(info);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`API Endpoints available at http://localhost:${PORT}/api/`);
+});
+
+app.get('/', (req, res) => {
+  res.send('Automation Server is running successfully 🚀');
 });
