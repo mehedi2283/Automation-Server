@@ -12,7 +12,7 @@ app.use(express.json());
 
 // Database Connection
 // Note: In production, use process.env.MONGODB_URI
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://niyaoctopidigital_db_user:7K3SSLZm3MwhRwYl@odl.nlmug8f.mongodb.net/?appName=ODL";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://niyaoctopidigital_db_user:7K3SSLZm3MwhRwYl@odl.nlmug8f.mongodb.net/Automation_Portfolio?retryWrites=true&w=majority&appName=ODL";
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB Connected Successfully'))
