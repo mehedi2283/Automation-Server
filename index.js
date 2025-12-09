@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -30,6 +31,7 @@ const ClientImage = require('./models/ClientImage');
 const TechTool = require('./models/TechTool');
 const AboutInfo = require('./models/AboutInfo');
 const Visitor = require('./models/Visitor');
+const Booking = require('./models/Booking');
 
 // --- REST API Routes ---
 
@@ -63,12 +65,30 @@ app.get('/api/stats', async (req, res) => {
       { $group: { _id: null, total: { $sum: "$visits" } } }
     ]);
     const totalVisits = totalVisitsResult.length > 0 ? totalVisitsResult[0].total : 0;
+    
+    // Get real booking count
+    const bookingsCount = await Booking.countDocuments();
 
-    res.json({ uniqueVisitors, totalVisits });
+    res.json({ uniqueVisitors, totalVisits, bookingsCount });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
+
+app.post('/api/bookings', async (req, res) => {
+  try {
+    const { clientName, clientEmail } = req.body;
+    const newBooking = await Booking.create({
+        bookingId: crypto.randomUUID(),
+        clientName: clientName || 'Online Visitor',
+        clientEmail
+    });
+    res.status(201).json(newBooking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 
 
 // 1. Projects Routes
