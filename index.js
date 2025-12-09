@@ -188,9 +188,16 @@ app.post('/api/clients', async (req, res) => {
 
 app.delete('/api/clients/:id', async (req, res) => {
   try {
-    await ClientImage.findOneAndDelete({ id: req.params.id });
+    console.log("Deleting client image with id:", req.params.id);
+    const result = await ClientImage.findOneAndDelete({ id: req.params.id });
+    if (!result) {
+        console.log("Client image not found");
+        return res.status(404).json({ message: 'Client not found' });
+    }
+    console.log("Client image deleted");
     res.json({ message: 'Client deleted' });
   } catch (err) {
+    console.error("Delete failed:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -226,7 +233,8 @@ app.put('/api/tech-stack/:id', async (req, res) => {
 
 app.delete('/api/tech-stack/:id', async (req, res) => {
   try {
-    await TechTool.findOneAndDelete({ id: req.params.id });
+    const result = await TechTool.findOneAndDelete({ id: req.params.id });
+    if (!result) return res.status(404).json({ message: 'Tool not found' });
     res.json({ message: 'Tool deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
