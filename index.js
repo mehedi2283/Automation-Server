@@ -78,14 +78,15 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// Internal Booking Route (Frontend)
+// Internal Booking Route (Frontend Widget)
 app.post('/api/bookings', async (req, res) => {
   try {
-    const { clientName, clientEmail } = req.body;
+    const { clientName, clientEmail, appointmentDate } = req.body;
     const newBooking = await Booking.create({
         bookingId: crypto.randomUUID(),
         clientName: clientName || 'Online Visitor',
         clientEmail,
+        appointmentDate: appointmentDate || new Date().toISOString(),
         source: 'website_widget'
     });
     res.status(201).json(newBooking);
@@ -94,7 +95,7 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
-// GET All Bookings (Admin) - THIS IS THE ROUTE THAT WAS 404ing
+// GET All Bookings (Admin)
 app.get('/api/bookings', async (req, res) => {
   try {
     const bookings = await Booking.find().sort({ createdAt: -1 });
@@ -110,20 +111,30 @@ app.post('/api/webhook/booking', async (req, res) => {
   try {
     console.log('Received booking webhook:', req.body);
 
-    // Extract fields based on your GHL Custom Data configuration
-    // Keys: Name, Email, Start_Date, Created
-    const { Name, Email, Start_Date } = req.body;
+    const body = req.body || {};
 
-    // Handle potential casing differences just in case
-    const clientName = Name || req.body.name || 'External Client';
-    const clientEmail = Email || req.body.email || '';
-    const dateRaw = Start_Date || req.body.start_date;
+    // 1. ROBUST NAME EXTRACTION
+    // Check various common GHL/CRM keys
+    let clientName = 'External Client';
+    if (body.Name) clientName = body.Name;
+    else if (body.name) clientName = body.name;
+    else if (body.contact_name) clientName = body.contact_name;
+    else if (body.full_name) clientName = body.full_name;
+    else if (body.first_name && body.last_name) clientName = `${body.first_name} ${body.last_name}`;
+    else if (body.firstName && body.lastName) clientName = `${body.firstName} ${body.lastName}`;
+
+    // 2. ROBUST DATE EXTRACTION
+    // Store as STRING exactly as received, or fallback to ISO string
+    let dateRaw = body.Start_Date || body.start_date || body.appointment_date || body.calendar_startTime || new Date().toISOString();
+
+    // 3. EMAIL EXTRACTION
+    const clientEmail = body.Email || body.email || body.contact_email || '';
 
     const newBooking = await Booking.create({
         bookingId: crypto.randomUUID(),
         clientName: clientName,
         clientEmail: clientEmail,
-        appointmentDate: dateRaw ? new Date(dateRaw) : new Date(),
+        appointmentDate: String(dateRaw), // Force string
         status: 'confirmed',
         source: 'webhook' 
     });
