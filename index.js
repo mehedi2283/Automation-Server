@@ -94,8 +94,18 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
+// GET All Bookings (Admin) - THIS IS THE ROUTE THAT WAS 404ing
+app.get('/api/bookings', async (req, res) => {
+  try {
+    const bookings = await Booking.find().sort({ createdAt: -1 });
+    res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // --- WEBHOOK ENDPOINT FOR GOHIGHLEVEL/EXTERNAL TOOLS ---
-// URL: https://automation-server-bm8q.onrender.com/api/webhook/booking
+// URL: /api/webhook/booking
 app.post('/api/webhook/booking', async (req, res) => {
   try {
     console.log('Received booking webhook:', req.body);
@@ -126,7 +136,6 @@ app.post('/api/webhook/booking', async (req, res) => {
   }
 });
 
-
 // 1. Projects Routes
 app.get('/api/projects', async (req, res) => {
   try {
@@ -149,7 +158,7 @@ app.post('/api/projects', async (req, res) => {
 
 app.put('/api/projects/reorder', async (req, res) => {
   try {
-    const { updates } = req.body; // Expects array of { id, order }
+    const { updates } = req.body;
     if (!updates || !Array.isArray(updates)) return res.status(400).json({ message: "Invalid updates" });
 
     const bulkOps = updates.map(update => ({
@@ -368,7 +377,6 @@ app.get('/api/about', async (req, res) => {
 
 app.post('/api/about', async (req, res) => {
   try {
-    // Upsert (update if exists, else insert)
     const { id, ...updateData } = req.body;
     const info = await AboutInfo.findOneAndUpdate(
       { id: id }, 
@@ -385,4 +393,3 @@ app.post('/api/about', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
