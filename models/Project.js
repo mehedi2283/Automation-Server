@@ -11,10 +11,10 @@ const ProjectSchema = new mongoose.Schema({
   solution: String,
   mainImage: String,
   clientMeetingImage: String,
+  extraImage: String,     // New field for additional detail image
   videoPoster: String,
-  videoLink: String,      // New field
-  externalLink: String,   // New field
-  isFeatured: { type: Boolean, default: false }, // New field
+  videoLink: String,
+  isFeatured: { type: Boolean, default: false },
   stats: [{
     label: String,
     value: String
