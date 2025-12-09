@@ -113,28 +113,39 @@ app.post('/api/webhook/booking', async (req, res) => {
 
     const body = req.body || {};
 
-    // 1. ROBUST NAME EXTRACTION
+ // 1. ROBUST NAME EXTRACTION
     let clientName = 'External Client';
-    if (body.Name) clientName = body.Name;
+    
+    // Check specific keys from your payload
+    if (body.full_name) clientName = body.full_name;
+    else if (body.first_name && body.last_name) clientName = `${body.first_name} ${body.last_name}`;
+    else if (body.Name) clientName = body.Name;
     else if (body.name) clientName = body.name;
     else if (body.contact_name) clientName = body.contact_name;
-    else if (body.full_name) clientName = body.full_name;
-    else if (body.first_name && body.last_name) clientName = `${body.first_name} ${body.last_name}`;
     else if (body.firstName && body.lastName) clientName = `${body.firstName} ${body.lastName}`;
 
     // 2. ROBUST DATE EXTRACTION
-    // We check multiple common keys used by CRMs (GHL, Zapier, etc)
-    // The user provided format: "Monday, December 22, 2025 1:00 AM"
-    let dateRaw = 
-        body.Start_Date || 
-        body.start_date || 
-        body.appointment_date || 
-        body.appointment_start_date ||
-        body.appointment_start_time ||
-        body.calendar_startTime || 
-        body.start_time ||
-        body.startTime ||
-        new Date().toISOString();
+    let dateRaw = null;
+
+    // Check nested calendar object (Standard GHL/LC format)
+    if (body.calendar && body.calendar.startTime) {
+        dateRaw = body.calendar.startTime;
+    } 
+    // Fallback to top-level keys if flattened
+    else {
+        dateRaw = 
+            body.Start_Date || 
+            body.start_date || 
+            body.appointment_date || 
+            body.appointment_start_date ||
+            body.appointment_start_time ||
+            body.calendar_startTime || 
+            body.start_time ||
+            body.startTime;
+    }
+    
+    // Default to now if still missing
+    if (!dateRaw) dateRaw = new Date().toISOString();
 
     // 3. EMAIL EXTRACTION
     const clientEmail = body.Email || body.email || body.contact_email || '';
@@ -148,7 +159,7 @@ app.post('/api/webhook/booking', async (req, res) => {
         source: 'webhook' 
     });
 
-    console.log(`Webhook processed. Saved booking for ${clientName}`);
+    console.log(`Webhook processed. Saved booking for ${clientName} at ${dateRaw}`);
     res.status(200).json({ message: 'Booking received successfully', id: newBooking.bookingId });
   } catch (err) {
     console.error('Webhook Error:', err);
