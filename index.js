@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+
 // Explicitly allow all methods including DELETE and PUT
 app.use(cors({
     origin: '*', // In production, restrict this to your frontend domain
