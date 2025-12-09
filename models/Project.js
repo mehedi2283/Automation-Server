@@ -14,6 +14,7 @@ const ProjectSchema = new mongoose.Schema({
   extraImage: String,     // New field for additional detail image
   videoPoster: String,
   videoLink: String,
+  publishDate: String,    // Stores date string (e.g. "2025-09-26")
   isFeatured: { type: Boolean, default: false },
   stats: [{
     label: String,
