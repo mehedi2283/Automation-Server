@@ -14,7 +14,10 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Handle Form Data from Webhooks
 
 // Database Connection
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://niyaoctopidigital_db_user:7K3SSLZm3MwhRwYl@odl.nlmug8f.mongodb.net/Automation_Portfolio?retryWrites=true&w=majority&appName=ODL";
@@ -75,13 +78,15 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+// Internal Booking Route (Frontend)
 app.post('/api/bookings', async (req, res) => {
   try {
     const { clientName, clientEmail } = req.body;
     const newBooking = await Booking.create({
         bookingId: crypto.randomUUID(),
         clientName: clientName || 'Online Visitor',
-        clientEmail
+        clientEmail,
+        source: 'website_widget'
     });
     res.status(201).json(newBooking);
   } catch (err) {
@@ -89,6 +94,37 @@ app.post('/api/bookings', async (req, res) => {
   }
 });
 
+// --- WEBHOOK ENDPOINT FOR GOHIGHLEVEL/EXTERNAL TOOLS ---
+// URL: https://automation-server-bm8q.onrender.com/api/webhook/booking
+app.post('/api/webhook/booking', async (req, res) => {
+  try {
+    console.log('Received booking webhook:', req.body);
+
+    // Extract fields based on your GHL Custom Data configuration
+    // Keys: Name, Email, Start_Date, Created
+    const { Name, Email, Start_Date } = req.body;
+
+    // Handle potential casing differences just in case
+    const clientName = Name || req.body.name || 'External Client';
+    const clientEmail = Email || req.body.email || '';
+    const dateRaw = Start_Date || req.body.start_date;
+
+    const newBooking = await Booking.create({
+        bookingId: crypto.randomUUID(),
+        clientName: clientName,
+        clientEmail: clientEmail,
+        appointmentDate: dateRaw ? new Date(dateRaw) : new Date(),
+        status: 'confirmed',
+        source: 'webhook' 
+    });
+
+    console.log(`Webhook processed. Saved booking for ${clientName}`);
+    res.status(200).json({ message: 'Booking received successfully', id: newBooking.bookingId });
+  } catch (err) {
+    console.error('Webhook Error:', err);
+    res.status(500).json({ message: 'Error processing webhook', error: err.message });
+  }
+});
 
 
 // 1. Projects Routes
