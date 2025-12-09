@@ -114,7 +114,6 @@ app.post('/api/webhook/booking', async (req, res) => {
     const body = req.body || {};
 
     // 1. ROBUST NAME EXTRACTION
-    // Check various common GHL/CRM keys
     let clientName = 'External Client';
     if (body.Name) clientName = body.Name;
     else if (body.name) clientName = body.name;
@@ -124,8 +123,18 @@ app.post('/api/webhook/booking', async (req, res) => {
     else if (body.firstName && body.lastName) clientName = `${body.firstName} ${body.lastName}`;
 
     // 2. ROBUST DATE EXTRACTION
-    // Store as STRING exactly as received, or fallback to ISO string
-    let dateRaw = body.Start_Date || body.start_date || body.appointment_date || body.calendar_startTime || new Date().toISOString();
+    // We check multiple common keys used by CRMs (GHL, Zapier, etc)
+    // The user provided format: "Monday, December 22, 2025 1:00 AM"
+    let dateRaw = 
+        body.Start_Date || 
+        body.start_date || 
+        body.appointment_date || 
+        body.appointment_start_date ||
+        body.appointment_start_time ||
+        body.calendar_startTime || 
+        body.start_time ||
+        body.startTime ||
+        new Date().toISOString();
 
     // 3. EMAIL EXTRACTION
     const clientEmail = body.Email || body.email || body.contact_email || '';
@@ -134,7 +143,7 @@ app.post('/api/webhook/booking', async (req, res) => {
         bookingId: crypto.randomUUID(),
         clientName: clientName,
         clientEmail: clientEmail,
-        appointmentDate: String(dateRaw), // Force string
+        appointmentDate: String(dateRaw), // Store as string to preserve format
         status: 'confirmed',
         source: 'webhook' 
     });
