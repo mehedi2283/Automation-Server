@@ -7,7 +7,12 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+// Explicitly allow all methods including DELETE and PUT
+app.use(cors({
+    origin: '*', // In production, restrict this to your frontend domain
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Database Connection
@@ -78,8 +83,14 @@ app.put('/api/projects/:id', async (req, res) => {
 
 app.delete('/api/projects/:id', async (req, res) => {
   try {
-    const result = await Project.findOneAndDelete({ id: req.params.id });
-    if (!result) return res.status(404).json({ message: 'Project not found' });
+    const id = req.params.id.trim();
+    console.log(`Attempting to delete Project with ID: ${id}`);
+    const result = await Project.findOneAndDelete({ id: id });
+    if (!result) {
+        console.log('Project not found for deletion');
+        return res.status(404).json({ message: 'Project not found' });
+    }
+    console.log('Project deleted successfully');
     res.json({ message: 'Project deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -118,8 +129,14 @@ app.put('/api/team/:id', async (req, res) => {
 
 app.delete('/api/team/:id', async (req, res) => {
   try {
-    const result = await TeamMember.findOneAndDelete({ id: req.params.id });
-    if (!result) return res.status(404).json({ message: 'Member not found' });
+    const id = req.params.id.trim();
+    console.log(`Attempting to delete Team Member with ID: ${id}`);
+    const result = await TeamMember.findOneAndDelete({ id: id });
+    if (!result) {
+        console.log('Team member not found for deletion');
+        return res.status(404).json({ message: 'Member not found' });
+    }
+    console.log('Team member deleted successfully');
     res.json({ message: 'Member deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -188,13 +205,14 @@ app.post('/api/clients', async (req, res) => {
 
 app.delete('/api/clients/:id', async (req, res) => {
   try {
-    console.log("Deleting client image with id:", req.params.id);
-    const result = await ClientImage.findOneAndDelete({ id: req.params.id });
+    const id = req.params.id.trim();
+    console.log(`Attempting to delete Client Image with ID: ${id}`);
+    const result = await ClientImage.findOneAndDelete({ id: id });
     if (!result) {
         console.log("Client image not found");
         return res.status(404).json({ message: 'Client not found' });
     }
-    console.log("Client image deleted");
+    console.log("Client image deleted successfully");
     res.json({ message: 'Client deleted' });
   } catch (err) {
     console.error("Delete failed:", err);
@@ -233,7 +251,9 @@ app.put('/api/tech-stack/:id', async (req, res) => {
 
 app.delete('/api/tech-stack/:id', async (req, res) => {
   try {
-    const result = await TechTool.findOneAndDelete({ id: req.params.id });
+    const id = req.params.id.trim();
+    console.log(`Attempting to delete Tech Tool with ID: ${id}`);
+    const result = await TechTool.findOneAndDelete({ id: id });
     if (!result) return res.status(404).json({ message: 'Tool not found' });
     res.json({ message: 'Tool deleted' });
   } catch (err) {
