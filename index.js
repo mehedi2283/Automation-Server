@@ -57,12 +57,20 @@ app.post('/api/visit', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const uniqueVisitors = await Visitor.countDocuments();
-    // You can add more aggregate stats here in the future
-    res.json({ uniqueVisitors });
+    
+    // Aggregation to sum up all visits
+    const totalVisitsResult = await Visitor.aggregate([
+      { $group: { _id: null, total: { $sum: "$visits" } } }
+    ]);
+    const totalVisits = totalVisitsResult.length > 0 ? totalVisitsResult[0].total : 0;
+
+    res.json({ uniqueVisitors, totalVisits });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
+
+
 // 1. Projects Routes
 app.get('/api/projects', async (req, res) => {
   try {
