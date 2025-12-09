@@ -29,9 +29,40 @@ const Workflow = require('./models/Workflow');
 const ClientImage = require('./models/ClientImage');
 const TechTool = require('./models/TechTool');
 const AboutInfo = require('./models/AboutInfo');
+const Visitor = require('./models/Visitor');
 
 // --- REST API Routes ---
 
+// 0. Stats & Tracking Routes
+app.post('/api/visit', async (req, res) => {
+  try {
+    const { visitorId, userAgent } = req.body;
+    if (!visitorId) return res.status(400).json({ message: "Visitor ID required" });
+
+    // Update existing or create new
+    const visitor = await Visitor.findOneAndUpdate(
+      { visitorId },
+      { 
+        $set: { userAgent, lastVisit: new Date() },
+        $inc: { visits: 1 } 
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json(visitor);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/stats', async (req, res) => {
+  try {
+    const uniqueVisitors = await Visitor.countDocuments();
+    // You can add more aggregate stats here in the future
+    res.json({ uniqueVisitors });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 // 1. Projects Routes
 app.get('/api/projects', async (req, res) => {
   try {
