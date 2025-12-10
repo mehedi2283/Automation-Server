@@ -5,6 +5,8 @@ const AboutInfoSchema = new mongoose.Schema({
   bio: String,
   totalProjects: String,
   hoursLogged: String,
+  agencyName: { type: String, default: 'AgencyAI' }, // New field
+  adminPassword: { type: String, default: 'admin123' }, // New field
   achievements: [{
     title: String,
     description: String
