@@ -21,7 +21,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Database Connection
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://niyaoctopidigital_db_user:7K3SSLZm3MwhRwYl@odl.nlmug8f.mongodb.net/Automation_Portfolio?retryWrites=true&w=majority&appName=ODL";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://ai_automation:pMWHlI1RKIwCmrPH@cluster0.w5am0gy.mongodb.net/Automation_Portfolio?retryWrites=true&w=majority&appName=cluster0";
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB Connected Successfully'))
