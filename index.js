@@ -191,7 +191,7 @@ app.post('/api/webhook/booking', async (req, res) => {
     if (lowerStatus === 'booked') status = 'confirmed';
     else if (lowerStatus === 'confirmed') status = 'confirmed';
     else if (lowerStatus === 'showed') status = 'Showed';
-    else if (lowerStatus === 'no-show') status = 'No-show';
+    else if (lowerStatus === 'no-show' || lowerStatus === 'noshow') status = 'No-show';
     else if (lowerStatus === 'cancelled' || lowerStatus === 'canceled') status = 'cancelled';
     else if (lowerStatus === 'invalid') status = 'invalid';
     else if (lowerStatus === 'new') status = 'new';
