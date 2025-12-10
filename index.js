@@ -105,14 +105,14 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
-// UPDATE Booking Status (Admin)
+// UPDATE Booking (Admin) - Supports full edit
 app.put('/api/bookings/:bookingId', async (req, res) => {
   try {
-    const { status } = req.body;
     // We search by bookingId (the UUID), not _id
+    // Use $set to update any fields provided in req.body
     const booking = await Booking.findOneAndUpdate(
       { bookingId: req.params.bookingId },
-      { status: status },
+      { $set: req.body },
       { new: true }
     );
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
