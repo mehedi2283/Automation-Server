@@ -105,6 +105,23 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
+// UPDATE Booking Status (Admin)
+app.put('/api/bookings/:bookingId', async (req, res) => {
+  try {
+    const { status } = req.body;
+    // We search by bookingId (the UUID), not _id
+    const booking = await Booking.findOneAndUpdate(
+      { bookingId: req.params.bookingId },
+      { status: status },
+      { new: true }
+    );
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    res.json(booking);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // --- WEBHOOK ENDPOINT FOR GOHIGHLEVEL/EXTERNAL TOOLS ---
 // URL: /api/webhook/booking
 app.post('/api/webhook/booking', async (req, res) => {
@@ -155,8 +172,8 @@ app.post('/api/webhook/booking', async (req, res) => {
         clientName: clientName,
         clientEmail: clientEmail,
         appointmentDate: String(dateRaw), // Store as string to preserve format
-        status: 'confirmed',
-        source: 'webhook' 
+        status: 'new',
+        source: 'web' 
     });
 
     console.log(`Webhook processed. Saved booking for ${clientName} at ${dateRaw}`);
