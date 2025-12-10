@@ -130,10 +130,8 @@ app.post('/api/webhook/booking', async (req, res) => {
 
     const body = req.body || {};
 
- // 1. ROBUST NAME EXTRACTION
+    // 1. ROBUST NAME EXTRACTION
     let clientName = 'External Client';
-    
-    // Check specific keys from your payload
     if (body.full_name) clientName = body.full_name;
     else if (body.first_name && body.last_name) clientName = `${body.first_name} ${body.last_name}`;
     else if (body.Name) clientName = body.Name;
@@ -143,41 +141,69 @@ app.post('/api/webhook/booking', async (req, res) => {
 
     // 2. ROBUST DATE EXTRACTION
     let dateRaw = null;
-
-    // Check nested calendar object (Standard GHL/LC format)
     if (body.calendar && body.calendar.startTime) {
         dateRaw = body.calendar.startTime;
-    } 
-    // Fallback to top-level keys if flattened
-    else {
+    } else {
         dateRaw = 
             body.Start_Date || 
             body.start_date || 
             body.appointment_date || 
-            body.appointment_start_date ||
-            body.appointment_start_time ||
+            body.appointment_start_date || 
+            body.appointment_start_time || 
             body.calendar_startTime || 
             body.start_time ||
             body.startTime;
     }
-    
-    // Default to now if still missing
     if (!dateRaw) dateRaw = new Date().toISOString();
 
     // 3. EMAIL EXTRACTION
     const clientEmail = body.Email || body.email || body.contact_email || '';
 
-    const newBooking = await Booking.create({
-        bookingId: crypto.randomUUID(),
-        clientName: clientName,
-        clientEmail: clientEmail,
-        appointmentDate: String(dateRaw), // Store as string to preserve format
-        status: 'new',
-        source: 'web' 
-    });
+    // 4. STATUS EXTRACTION & NORMALIZATION
+    // We try to match the status to the dashboard options: new, confirmed, cancelled, Showed, No-show, invalid
+    let rawStatus = body.appointmentStatus || body.status || 'new';
+    let status = rawStatus;
+    
+    // Normalize common variations
+    const lowerStatus = String(rawStatus).toLowerCase();
+    if (lowerStatus === 'booked') status = 'confirmed';
+    else if (lowerStatus === 'showed') status = 'Showed';
+    else if (lowerStatus === 'no-show') status = 'No-show';
+    else if (lowerStatus === 'canceled') status = 'cancelled';
 
-    console.log(`Webhook processed. Saved booking for ${clientName} at ${dateRaw}`);
-    res.status(200).json({ message: 'Booking received successfully', id: newBooking.bookingId });
+    // 5. SOURCE EXTRACTION
+    const source = body.contact_source || 'webhook';
+
+    let booking;
+    
+    // Check if booking already exists for this email
+    if (clientEmail) {
+        booking = await Booking.findOne({ clientEmail: clientEmail });
+    }
+
+    if (booking) {
+        // UPDATE EXISTING
+        booking.clientName = clientName;
+        booking.appointmentDate = String(dateRaw);
+        booking.status = status;
+        booking.source = source;
+        // Mongoose automatically updates 'updatedAt'
+        await booking.save();
+        console.log(`Updated existing booking for ${clientEmail}`);
+    } else {
+        // CREATE NEW
+        booking = await Booking.create({
+            bookingId: crypto.randomUUID(),
+            clientName: clientName,
+            clientEmail: clientEmail,
+            appointmentDate: String(dateRaw), // Store as string to preserve format
+            status: status,
+            source: source
+        });
+        console.log(`Created new booking for ${clientName}`);
+    }
+
+    res.status(200).json({ message: 'Booking processed successfully', id: booking.bookingId });
   } catch (err) {
     console.error('Webhook Error:', err);
     res.status(500).json({ message: 'Error processing webhook', error: err.message });
