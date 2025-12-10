@@ -39,6 +39,35 @@ const Booking = require('./models/Booking');
 
 // --- REST API Routes ---
 
+// AUTH ROUTE
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { password } = req.body;
+        // Fetch the single AboutInfo document where password is stored
+        let info = await AboutInfo.findOne();
+        
+        // If no info exists yet, create default with default password
+        if (!info) {
+            info = await AboutInfo.create({
+                id: 'default',
+                agencyName: 'AgencyAI',
+                adminPassword: 'admin123',
+                bio: 'Welcome to your new agency site.',
+                totalProjects: '0',
+                hoursLogged: '0'
+            });
+        }
+
+        if (info.adminPassword === password) {
+            res.json({ success: true, message: 'Authenticated' });
+        } else {
+            res.status(401).json({ success: false, message: 'Invalid Password' });
+        }
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // 0. Stats & Tracking Routes
 app.post('/api/visit', async (req, res) => {
   try {
@@ -114,19 +143,16 @@ app.put('/api/bookings/:bookingId', async (req, res) => {
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
     // --- TRIGGER EXTERNAL GHL WEBHOOK ---
-    // This triggers for EVERY update (status change, email fix, etc.)
-    // It sends the current state of the booking to the external automation.
     try {
         console.log(`Triggering external GHL webhook for booking ${booking.bookingId} with status: ${booking.status}`);
         
-        // Construct robust payload compatible with GHL
         const payload = {
             email: booking.clientEmail || '',
-            status: booking.status || 'new', // Ensure a status is always sent
+            status: booking.status || 'new', 
             name: booking.clientName,
             firstName: booking.clientName.split(' ')[0] || '',
             lastName: booking.clientName.split(' ').slice(1).join(' ') || '',
-            phone: '', // Add phone if you add it to the schema later
+            phone: '',
             appointmentDate: booking.appointmentDate,
             externalId: booking.externalId,
             bookingId: booking.bookingId,
@@ -134,7 +160,6 @@ app.put('/api/bookings/:bookingId', async (req, res) => {
             lastUpdated: new Date().toISOString()
         };
 
-        // Fire and forget (don't await) to keep UI fast, but log errors
         fetch(GHL_TRIGGER_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -161,20 +186,17 @@ app.put('/api/bookings/:bookingId', async (req, res) => {
 });
 
 // --- WEBHOOK ENDPOINT FOR INBOUND GOHIGHLEVEL DATA ---
-// URL: /api/webhook/booking
 app.post('/api/webhook/booking', async (req, res) => {
   try {
     console.log('Received booking webhook:', JSON.stringify(req.body, null, 2));
 
     const body = req.body || {};
 
-    // 0. EXTRACT EXTERNAL ID (CRITICAL FOR UPDATES)
     let externalId = null;
     if (body.calendar && body.calendar.appointmentId) externalId = body.calendar.appointmentId;
     else if (body.appointmentId) externalId = body.appointmentId;
     else if (body.id) externalId = body.id;
 
-    // 1. ROBUST NAME EXTRACTION
     let clientName = 'External Client';
     if (body.full_name) clientName = body.full_name;
     else if (body.first_name && body.last_name) clientName = `${body.first_name} ${body.last_name}`;
@@ -183,7 +205,6 @@ app.post('/api/webhook/booking', async (req, res) => {
     else if (body.contact_name) clientName = body.contact_name;
     else if (body.firstName && body.lastName) clientName = `${body.firstName} ${body.lastName}`;
 
-    // 2. ROBUST DATE EXTRACTION
     let dateRaw = null;
     if (body.calendar && body.calendar.startTime) {
         dateRaw = body.calendar.startTime;
@@ -200,72 +221,54 @@ app.post('/api/webhook/booking', async (req, res) => {
     }
     if (!dateRaw) dateRaw = new Date().toISOString();
 
-    // 3. EMAIL EXTRACTION
     const clientEmail = body.Email || body.email || body.contact_email || '';
 
-    // 4. STATUS EXTRACTION
-    // STRICT PRIORITY: GHL payloads often have a typo 'appoinmentStatus'. We must check this first.
     let rawStatus = null;
-    
-    // Check nested calendar object first
     if (body.calendar) {
-        if (body.calendar.appoinmentStatus) rawStatus = body.calendar.appoinmentStatus; // Typo check
-        else if (body.calendar.appointmentStatus) rawStatus = body.calendar.appointmentStatus; // Correct spelling
-        else if (body.calendar.status) rawStatus = body.calendar.status; // Fallback to generic status
+        if (body.calendar.appoinmentStatus) rawStatus = body.calendar.appoinmentStatus; 
+        else if (body.calendar.appointmentStatus) rawStatus = body.calendar.appointmentStatus; 
+        else if (body.calendar.status) rawStatus = body.calendar.status; 
     }
 
-    // If still null, check root level
     if (!rawStatus) {
-        if (body.appoinmentStatus) rawStatus = body.appoinmentStatus; // Typo check
-        else if (body.appointmentStatus) rawStatus = body.appointmentStatus; // Correct spelling
-        else if (body.status) rawStatus = body.status; // Fallback
+        if (body.appoinmentStatus) rawStatus = body.appoinmentStatus; 
+        else if (body.appointmentStatus) rawStatus = body.appointmentStatus; 
+        else if (body.status) rawStatus = body.status; 
     }
 
     if (!rawStatus) rawStatus = 'new';
 
-    // NORMALIZE STATUS TO DB SCHEMA
     let status = rawStatus;
     const lowerStatus = String(rawStatus).toLowerCase();
     
     if (lowerStatus === 'booked') status = 'confirmed';
     else if (lowerStatus === 'confirmed') status = 'confirmed';
     else if (lowerStatus === 'showed') status = 'Showed';
-    // Handle 'no-show' AND 'noshow' (without hyphen)
     else if (lowerStatus === 'no-show' || lowerStatus === 'noshow') status = 'No-show';
     else if (lowerStatus === 'cancelled' || lowerStatus === 'canceled') status = 'cancelled';
     else if (lowerStatus === 'invalid') status = 'invalid';
     else if (lowerStatus === 'new') status = 'new';
 
-    // 5. SOURCE EXTRACTION
     const source = body.contact_source || 'webhook';
 
     let booking;
     
-    // A. Try to find by External ID first (Most accurate)
     if (externalId) {
         booking = await Booking.findOne({ externalId: externalId });
-        if (booking) console.log(`Found existing booking by External ID: ${externalId}`);
     }
 
-    // B. Fallback to Email lookup (Legacy support or first sync without ID)
     if (!booking && clientEmail) {
-        // Find the most recent booking for this email
         booking = await Booking.findOne({ clientEmail: clientEmail }).sort({ createdAt: -1 });
-        if (booking) console.log(`Found existing booking by Email: ${clientEmail} (External ID was ${externalId || 'missing'})`);
     }
 
     if (booking) {
-        // UPDATE EXISTING RECORD
         booking.clientName = clientName;
         booking.appointmentDate = String(dateRaw);
         booking.status = status;
         booking.source = source;
-        if (externalId) booking.externalId = externalId; // Save the ID so next time we match by ID
-        
+        if (externalId) booking.externalId = externalId; 
         await booking.save();
-        console.log(`Updated booking ${booking.bookingId}. Status set to: ${status} (derived from ${rawStatus})`);
     } else {
-        // CREATE NEW RECORD
         booking = await Booking.create({
             bookingId: crypto.randomUUID(),
             clientName: clientName,
@@ -273,9 +276,8 @@ app.post('/api/webhook/booking', async (req, res) => {
             appointmentDate: String(dateRaw), 
             status: status, 
             source: source,
-            externalId: externalId // Store ID for future updates
+            externalId: externalId 
         });
-        console.log(`Created new booking ${booking.bookingId}. Status set to: ${status} (derived from ${rawStatus})`);
     }
 
     res.status(200).json({ message: 'Booking processed successfully', id: booking.bookingId });
@@ -500,8 +502,19 @@ app.delete('/api/tech-stack/:id', async (req, res) => {
 // 6. About Us Routes
 app.get('/api/about', async (req, res) => {
   try {
-    const info = await AboutInfo.findOne();
-    res.json(info || null);
+    // Return all info including agencyName and adminPassword so they can be edited in the dashboard
+    let info = await AboutInfo.findOne();
+    if (!info) {
+       info = await AboutInfo.create({
+            id: 'default',
+            agencyName: 'AgencyAI',
+            adminPassword: 'admin123',
+            bio: 'Welcome.',
+            totalProjects: '0',
+            hoursLogged: '0'
+       });
+    }
+    res.json(info);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -511,7 +524,7 @@ app.post('/api/about', async (req, res) => {
   try {
     const { id, ...updateData } = req.body;
     const info = await AboutInfo.findOneAndUpdate(
-      { id: id }, 
+      { id: id || 'default' }, 
       req.body, 
       { new: true, upsert: true }
     );
