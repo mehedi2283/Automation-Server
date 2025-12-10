@@ -1,23 +1,24 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-require('dotenv').config();
 const crypto = require('crypto');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// The webhook URL to trigger in GoHighLevel when a booking is updated in the dashboard
+const GHL_TRIGGER_URL = "https://services.leadconnectorhq.com/hooks/FFZVCsG7Awyv1RFevnwQ/webhook-trigger/1d7d75ed-befd-4a86-a709-700609c7843d";
 
-// Explicitly allow all methods including DELETE and PUT
+// Middleware
 app.use(cors({
-    origin: '*', // In production, restrict this to your frontend domain
+    origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-
 app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // Handle Form Data from Webhooks
+app.use(express.urlencoded({ extended: true }));
 
 // Database Connection
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://niyaoctopidigital_db_user:7K3SSLZm3MwhRwYl@odl.nlmug8f.mongodb.net/Automation_Portfolio?retryWrites=true&w=majority&appName=ODL";
@@ -44,7 +45,6 @@ app.post('/api/visit', async (req, res) => {
     const { visitorId, userAgent } = req.body;
     if (!visitorId) return res.status(400).json({ message: "Visitor ID required" });
 
-    // Update existing or create new
     const visitor = await Visitor.findOneAndUpdate(
       { visitorId },
       { 
@@ -62,14 +62,10 @@ app.post('/api/visit', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const uniqueVisitors = await Visitor.countDocuments();
-    
-    // Aggregation to sum up all visits
     const totalVisitsResult = await Visitor.aggregate([
       { $group: { _id: null, total: { $sum: "$visits" } } }
     ]);
     const totalVisits = totalVisitsResult.length > 0 ? totalVisitsResult[0].total : 0;
-    
-    // Get real booking count
     const bookingsCount = await Booking.countDocuments();
 
     res.json({ uniqueVisitors, totalVisits, bookingsCount });
@@ -87,7 +83,8 @@ app.post('/api/bookings', async (req, res) => {
         clientName: clientName || 'Online Visitor',
         clientEmail,
         appointmentDate: appointmentDate || new Date().toISOString(),
-        source: 'website_widget'
+        source: 'website_widget',
+        status: 'new'
     });
     res.status(201).json(newBooking);
   } catch (err) {
@@ -105,24 +102,65 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
-// UPDATE Booking (Admin) - Supports full edit
+// UPDATE Booking (Admin) - Supports full edit and Triggers External Webhook
 app.put('/api/bookings/:bookingId', async (req, res) => {
   try {
-    // We search by bookingId (the UUID), not _id
-    // Use $set to update any fields provided in req.body
     const booking = await Booking.findOneAndUpdate(
       { bookingId: req.params.bookingId },
       { $set: req.body },
       { new: true }
     );
+    
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
+
+    // --- TRIGGER EXTERNAL GHL WEBHOOK ---
+    // This triggers for EVERY update (status change, email fix, etc.)
+    // It sends the current state of the booking to the external automation.
+    try {
+        console.log(`Triggering external GHL webhook for booking ${booking.bookingId} with status: ${booking.status}`);
+        
+        // Construct robust payload compatible with GHL
+        const payload = {
+            email: booking.clientEmail || '',
+            status: booking.status || 'new', // Ensure a status is always sent
+            name: booking.clientName,
+            firstName: booking.clientName.split(' ')[0] || '',
+            lastName: booking.clientName.split(' ').slice(1).join(' ') || '',
+            phone: '', // Add phone if you add it to the schema later
+            appointmentDate: booking.appointmentDate,
+            externalId: booking.externalId,
+            bookingId: booking.bookingId,
+            source: 'admin_dashboard',
+            lastUpdated: new Date().toISOString()
+        };
+
+        // Fire and forget (don't await) to keep UI fast, but log errors
+        fetch(GHL_TRIGGER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(async response => {
+            if (response.ok) {
+                console.log('Successfully triggered GHL webhook');
+            } else {
+                const txt = await response.text();
+                console.error('GHL Webhook returned error:', response.status, txt);
+            }
+        })
+        .catch(err => console.error('Failed to call GHL webhook:', err.message));
+
+    } catch (webhookErr) {
+        console.error('Error constructing webhook payload:', webhookErr);
+    }
+
     res.json(booking);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// --- WEBHOOK ENDPOINT FOR GOHIGHLEVEL/EXTERNAL TOOLS ---
+// --- WEBHOOK ENDPOINT FOR INBOUND GOHIGHLEVEL DATA ---
 // URL: /api/webhook/booking
 app.post('/api/webhook/booking', async (req, res) => {
   try {
@@ -299,13 +337,8 @@ app.put('/api/projects/:id', async (req, res) => {
 app.delete('/api/projects/:id', async (req, res) => {
   try {
     const id = req.params.id.trim();
-    console.log(`Attempting to delete Project with ID: ${id}`);
     const result = await Project.findOneAndDelete({ id: id });
-    if (!result) {
-        console.log('Project not found for deletion');
-        return res.status(404).json({ message: 'Project not found' });
-    }
-    console.log('Project deleted successfully');
+    if (!result) return res.status(404).json({ message: 'Project not found' });
     res.json({ message: 'Project deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -345,13 +378,8 @@ app.put('/api/team/:id', async (req, res) => {
 app.delete('/api/team/:id', async (req, res) => {
   try {
     const id = req.params.id.trim();
-    console.log(`Attempting to delete Team Member with ID: ${id}`);
     const result = await TeamMember.findOneAndDelete({ id: id });
-    if (!result) {
-        console.log('Team member not found for deletion');
-        return res.status(404).json({ message: 'Member not found' });
-    }
-    console.log('Team member deleted successfully');
+    if (!result) return res.status(404).json({ message: 'Member not found' });
     res.json({ message: 'Member deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -421,16 +449,10 @@ app.post('/api/clients', async (req, res) => {
 app.delete('/api/clients/:id', async (req, res) => {
   try {
     const id = req.params.id.trim();
-    console.log(`Attempting to delete Client Image with ID: ${id}`);
     const result = await ClientImage.findOneAndDelete({ id: id });
-    if (!result) {
-        console.log("Client image not found");
-        return res.status(404).json({ message: 'Client not found' });
-    }
-    console.log("Client image deleted successfully");
+    if (!result) return res.status(404).json({ message: 'Client not found' });
     res.json({ message: 'Client deleted' });
   } catch (err) {
-    console.error("Delete failed:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -467,7 +489,6 @@ app.put('/api/tech-stack/:id', async (req, res) => {
 app.delete('/api/tech-stack/:id', async (req, res) => {
   try {
     const id = req.params.id.trim();
-    console.log(`Attempting to delete Tech Tool with ID: ${id}`);
     const result = await TechTool.findOneAndDelete({ id: id });
     if (!result) return res.status(404).json({ message: 'Tool not found' });
     res.json({ message: 'Tool deleted' });
@@ -476,7 +497,7 @@ app.delete('/api/tech-stack/:id', async (req, res) => {
   }
 });
 
-// 6. About Us Routes (Singleton)
+// 6. About Us Routes
 app.get('/api/about', async (req, res) => {
   try {
     const info = await AboutInfo.findOne();
@@ -500,7 +521,6 @@ app.post('/api/about', async (req, res) => {
   }
 });
 
-// Start Server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
