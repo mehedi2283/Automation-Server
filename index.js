@@ -21,8 +21,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Database Connection
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://ai_automation:pMWHlI1RKIwCmrPH@cluster0.w5am0gy.mongodb.net/Automation_Portfolio?retryWrites=true&w=majority&appName=cluster0";
-
+const MONGODB_URI = process.env.MONGODB_URI || "";
+mongodb+srv://ai_automation:pMWHlI1RKIwCmrPH@cluster0.w5am0gy.mongodb.net/Automation_Portfolio?retryWrites=true&w=majority&appName=cluster0
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB Connected Successfully'))
   .catch(err => console.error('MongoDB Connection Error:', err));
@@ -36,6 +36,7 @@ const TechTool = require('./models/TechTool');
 const AboutInfo = require('./models/AboutInfo');
 const Visitor = require('./models/Visitor');
 const Booking = require('./models/Booking');
+const ChatWidget = require('./models/ChatWidget'); // New Chat Model
 
 // --- REST API Routes ---
 
@@ -126,6 +127,19 @@ app.get('/api/bookings', async (req, res) => {
   try {
     const bookings = await Booking.find().sort({ createdAt: -1 });
     res.json(bookings);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+
+
+// GET All Chats (Admin)
+app.get('/api/chats', async (req, res) => {
+  try {
+    // Sort by updated at desc
+    const chats = await ChatWidget.find().sort({ updatedAt: -1 }).limit(100);
+    res.json(chats);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
