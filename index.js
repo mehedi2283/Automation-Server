@@ -126,9 +126,15 @@ app.put('/api/bookings/:bookingId', async (req, res) => {
 // URL: /api/webhook/booking
 app.post('/api/webhook/booking', async (req, res) => {
   try {
-    console.log('Received booking webhook:', req.body);
+    console.log('Received booking webhook:', JSON.stringify(req.body, null, 2));
 
     const body = req.body || {};
+
+    // 0. EXTRACT EXTERNAL ID (CRITICAL FOR UPDATES)
+    let externalId = null;
+    if (body.calendar && body.calendar.appointmentId) externalId = body.calendar.appointmentId;
+    else if (body.appointmentId) externalId = body.appointmentId;
+    else if (body.id) externalId = body.id;
 
     // 1. ROBUST NAME EXTRACTION
     let clientName = 'External Client';
@@ -191,6 +197,7 @@ app.post('/api/webhook/booking', async (req, res) => {
     if (lowerStatus === 'booked') status = 'confirmed';
     else if (lowerStatus === 'confirmed') status = 'confirmed';
     else if (lowerStatus === 'showed') status = 'Showed';
+    // Handle 'no-show' AND 'noshow' (without hyphen)
     else if (lowerStatus === 'no-show' || lowerStatus === 'noshow') status = 'No-show';
     else if (lowerStatus === 'cancelled' || lowerStatus === 'canceled') status = 'cancelled';
     else if (lowerStatus === 'invalid') status = 'invalid';
@@ -201,20 +208,29 @@ app.post('/api/webhook/booking', async (req, res) => {
 
     let booking;
     
-    // Check if booking already exists for this email
-    if (clientEmail) {
-        booking = await Booking.findOne({ clientEmail: clientEmail });
+    // A. Try to find by External ID first (Most accurate)
+    if (externalId) {
+        booking = await Booking.findOne({ externalId: externalId });
+        if (booking) console.log(`Found existing booking by External ID: ${externalId}`);
+    }
+
+    // B. Fallback to Email lookup (Legacy support or first sync without ID)
+    if (!booking && clientEmail) {
+        // Find the most recent booking for this email
+        booking = await Booking.findOne({ clientEmail: clientEmail }).sort({ createdAt: -1 });
+        if (booking) console.log(`Found existing booking by Email: ${clientEmail} (External ID was ${externalId || 'missing'})`);
     }
 
     if (booking) {
         // UPDATE EXISTING RECORD
         booking.clientName = clientName;
         booking.appointmentDate = String(dateRaw);
-        booking.status = status; // Uses normalized status derived from appointmentStatus
+        booking.status = status;
         booking.source = source;
-        // Mongoose automatically updates 'updatedAt'
+        if (externalId) booking.externalId = externalId; // Save the ID so next time we match by ID
+        
         await booking.save();
-        console.log(`Updated existing booking for ${clientEmail}. Status set to: ${status} (derived from ${rawStatus})`);
+        console.log(`Updated booking ${booking.bookingId}. Status set to: ${status}`);
     } else {
         // CREATE NEW RECORD
         booking = await Booking.create({
@@ -222,10 +238,11 @@ app.post('/api/webhook/booking', async (req, res) => {
             clientName: clientName,
             clientEmail: clientEmail,
             appointmentDate: String(dateRaw), 
-            status: status, // Uses normalized status derived from appointmentStatus
-            source: source
+            status: status, 
+            source: source,
+            externalId: externalId // Store ID for future updates
         });
-        console.log(`Created new booking for ${clientName}. Status set to: ${status} (derived from ${rawStatus})`);
+        console.log(`Created new booking ${booking.bookingId}. Status set to: ${status}`);
     }
 
     res.status(200).json({ message: 'Booking processed successfully', id: booking.bookingId });
