@@ -160,16 +160,32 @@ app.post('/api/webhook/booking', async (req, res) => {
     const clientEmail = body.Email || body.email || body.contact_email || '';
 
     // 4. STATUS EXTRACTION & NORMALIZATION
-    // We try to match the status to the dashboard options: new, confirmed, cancelled, Showed, No-show, invalid
-    let rawStatus = body.appointmentStatus || body.status || 'new';
+    // Prioritize nested calendar status if available
+    let rawStatus = 'new';
+    
+    if (body.calendar) {
+        // Check for appointmentStatus first (e.g. 'confirmed') then status (e.g. 'booked')
+        if (body.calendar.appointmentStatus) rawStatus = body.calendar.appointmentStatus;
+        else if (body.calendar.status) rawStatus = body.calendar.status;
+    } 
+    
+    if (rawStatus === 'new') {
+        // Fallback to top level
+        rawStatus = body.appointmentStatus || body.status || 'new';
+    }
+
     let status = rawStatus;
     
-    // Normalize common variations
+    // Normalize common variations to match dashboard options
     const lowerStatus = String(rawStatus).toLowerCase();
+    
     if (lowerStatus === 'booked') status = 'confirmed';
+    else if (lowerStatus === 'confirmed') status = 'confirmed';
     else if (lowerStatus === 'showed') status = 'Showed';
     else if (lowerStatus === 'no-show') status = 'No-show';
-    else if (lowerStatus === 'canceled') status = 'cancelled';
+    else if (lowerStatus === 'cancelled' || lowerStatus === 'canceled') status = 'cancelled';
+    else if (lowerStatus === 'invalid') status = 'invalid';
+    else if (lowerStatus === 'new') status = 'new';
 
     // 5. SOURCE EXTRACTION
     const source = body.contact_source || 'webhook';
@@ -189,7 +205,7 @@ app.post('/api/webhook/booking', async (req, res) => {
         booking.source = source;
         // Mongoose automatically updates 'updatedAt'
         await booking.save();
-        console.log(`Updated existing booking for ${clientEmail}`);
+        console.log(`Updated existing booking for ${clientEmail} to status: ${status}`);
     } else {
         // CREATE NEW
         booking = await Booking.create({
@@ -200,7 +216,7 @@ app.post('/api/webhook/booking', async (req, res) => {
             status: status,
             source: source
         });
-        console.log(`Created new booking for ${clientName}`);
+        console.log(`Created new booking for ${clientName} with status: ${status}`);
     }
 
     res.status(200).json({ message: 'Booking processed successfully', id: booking.bookingId });
