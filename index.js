@@ -159,24 +159,33 @@ app.post('/api/webhook/booking', async (req, res) => {
     // 3. EMAIL EXTRACTION
     const clientEmail = body.Email || body.email || body.contact_email || '';
 
-    // 4. STATUS EXTRACTION & NORMALIZATION
-    // Prioritize nested calendar status if available
-    let rawStatus = 'new';
+    // 4. STATUS EXTRACTION
+    // STRICT PRIORITY: Check 'appointmentStatus' first, as 'status' often defaults to 'booked' regardless of actual state.
+    let rawStatus = null;
     
-    if (body.calendar) {
-        // Check for appointmentStatus first (e.g. 'confirmed') then status (e.g. 'booked')
-        if (body.calendar.appointmentStatus) rawStatus = body.calendar.appointmentStatus;
-        else if (body.calendar.status) rawStatus = body.calendar.status;
-    } 
-    
-    if (rawStatus === 'new') {
-        // Fallback to top level
-        rawStatus = body.appointmentStatus || body.status || 'new';
+    // Check nested calendar object first
+    if (body.calendar && body.calendar.appointmentStatus) {
+        rawStatus = body.calendar.appointmentStatus;
+    }
+    // Check top-level appointmentStatus
+    else if (body.appointmentStatus) {
+        rawStatus = body.appointmentStatus;
+    }
+    // Fallback to nested calendar status
+    else if (body.calendar && body.calendar.status) {
+        rawStatus = body.calendar.status;
+    }
+    // Fallback to top-level status
+    else if (body.status) {
+        rawStatus = body.status;
+    }
+    // Default
+    else {
+        rawStatus = 'new';
     }
 
+    // NORMALIZE STATUS TO DB SCHEMA
     let status = rawStatus;
-    
-    // Normalize common variations to match dashboard options
     const lowerStatus = String(rawStatus).toLowerCase();
     
     if (lowerStatus === 'booked') status = 'confirmed';
@@ -198,25 +207,25 @@ app.post('/api/webhook/booking', async (req, res) => {
     }
 
     if (booking) {
-        // UPDATE EXISTING
+        // UPDATE EXISTING RECORD
         booking.clientName = clientName;
         booking.appointmentDate = String(dateRaw);
-        booking.status = status;
+        booking.status = status; // Uses normalized status derived from appointmentStatus
         booking.source = source;
         // Mongoose automatically updates 'updatedAt'
         await booking.save();
-        console.log(`Updated existing booking for ${clientEmail} to status: ${status}`);
+        console.log(`Updated existing booking for ${clientEmail}. Status set to: ${status} (derived from ${rawStatus})`);
     } else {
-        // CREATE NEW
+        // CREATE NEW RECORD
         booking = await Booking.create({
             bookingId: crypto.randomUUID(),
             clientName: clientName,
             clientEmail: clientEmail,
-            appointmentDate: String(dateRaw), // Store as string to preserve format
-            status: status,
+            appointmentDate: String(dateRaw), 
+            status: status, // Uses normalized status derived from appointmentStatus
             source: source
         });
-        console.log(`Created new booking for ${clientName} with status: ${status}`);
+        console.log(`Created new booking for ${clientName}. Status set to: ${status} (derived from ${rawStatus})`);
     }
 
     res.status(200).json({ message: 'Booking processed successfully', id: booking.bookingId });
