@@ -166,29 +166,24 @@ app.post('/api/webhook/booking', async (req, res) => {
     const clientEmail = body.Email || body.email || body.contact_email || '';
 
     // 4. STATUS EXTRACTION
-    // STRICT PRIORITY: Check 'appointmentStatus' first, as 'status' often defaults to 'booked' regardless of actual state.
+    // STRICT PRIORITY: GHL payloads often have a typo 'appoinmentStatus'. We must check this first.
     let rawStatus = null;
     
     // Check nested calendar object first
-    if (body.calendar && body.calendar.appointmentStatus) {
-        rawStatus = body.calendar.appointmentStatus;
+    if (body.calendar) {
+        if (body.calendar.appoinmentStatus) rawStatus = body.calendar.appoinmentStatus; // Typo check
+        else if (body.calendar.appointmentStatus) rawStatus = body.calendar.appointmentStatus; // Correct spelling
+        else if (body.calendar.status) rawStatus = body.calendar.status; // Fallback to generic status
     }
-    // Check top-level appointmentStatus
-    else if (body.appointmentStatus) {
-        rawStatus = body.appointmentStatus;
+
+    // If still null, check root level
+    if (!rawStatus) {
+        if (body.appoinmentStatus) rawStatus = body.appoinmentStatus; // Typo check
+        else if (body.appointmentStatus) rawStatus = body.appointmentStatus; // Correct spelling
+        else if (body.status) rawStatus = body.status; // Fallback
     }
-    // Fallback to nested calendar status
-    else if (body.calendar && body.calendar.status) {
-        rawStatus = body.calendar.status;
-    }
-    // Fallback to top-level status
-    else if (body.status) {
-        rawStatus = body.status;
-    }
-    // Default
-    else {
-        rawStatus = 'new';
-    }
+
+    if (!rawStatus) rawStatus = 'new';
 
     // NORMALIZE STATUS TO DB SCHEMA
     let status = rawStatus;
@@ -230,7 +225,7 @@ app.post('/api/webhook/booking', async (req, res) => {
         if (externalId) booking.externalId = externalId; // Save the ID so next time we match by ID
         
         await booking.save();
-        console.log(`Updated booking ${booking.bookingId}. Status set to: ${status}`);
+        console.log(`Updated booking ${booking.bookingId}. Status set to: ${status} (derived from ${rawStatus})`);
     } else {
         // CREATE NEW RECORD
         booking = await Booking.create({
@@ -242,7 +237,7 @@ app.post('/api/webhook/booking', async (req, res) => {
             source: source,
             externalId: externalId // Store ID for future updates
         });
-        console.log(`Created new booking ${booking.bookingId}. Status set to: ${status}`);
+        console.log(`Created new booking ${booking.bookingId}. Status set to: ${status} (derived from ${rawStatus})`);
     }
 
     res.status(200).json({ message: 'Booking processed successfully', id: booking.bookingId });
