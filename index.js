@@ -145,6 +145,26 @@ app.get('/api/chats', async (req, res) => {
   }
 });
 
+// POST Chat Message (Frontend Widget)
+app.post('/api/chats/message', async (req, res) => {
+  try {
+    const { sessionId, type, data } = req.body;
+    if (!sessionId || !data) return res.status(400).json({ message: "Missing required fields" });
+
+    // Use findOneAndUpdate to append message to existing session or create new one
+    const chat = await ChatWidget.findOneAndUpdate(
+      { sessionId },
+      { 
+        $push: { messages: { type, data, timestamp: new Date() } }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    res.json(chat);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // UPDATE Booking (Admin) - Supports full edit and Triggers External Webhook
 app.put('/api/bookings/:bookingId', async (req, res) => {
   try {
